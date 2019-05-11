@@ -3,7 +3,6 @@ nltk.download('stopwords')
 import numpy as np
 import pandas as pd
 import gensim
-import WebScraper
 from wordcloud import WordCloud
 import pyLDAvis
 import pyLDAvis.gensim
@@ -14,57 +13,118 @@ print('Fitering Deprecation Warnings!')
 warnings.filterwarnings("ignore",category=DeprecationWarning)
 
 class TopicModeling:
+    '''
+    This class can be used to carry out LDA and generate word clouds
+    for visualisation.
+
+    Example Usage (review_data is a dataframe with a column called 'fullreview'):
+    import TopicModeling
+    myTopicModel = TopicModeling.TopicModeling(review_data)
+    myTopicModel.ldaFromReviews()
+    myTopicModel.generate_wordcloud()
+    '''
 
     def __init__(self, df, review_column = 'fullreview'):
+        '''
+        Constructure.
+        :param df: this is a dataframe with a column containing reviews
+        :param review_column: the name of the review column in the passed in df
+        '''
+
+        # Get the stopwords
         self.stopwords = nltk.corpus.stopwords.words('english')
+
+        # Attach a copy of the dataframe to this object
         self.df = df.copy()
+
+        # Save the column name to be used for the reviews
         self.review_column = review_column
+
+        # This will be the corpus
         self.corpus = None
+
+        # This will be the ids of the words
         self.id2word = None
 
     def cleanDocument(self, x):
+        '''
+        This method takes a document (single review), cleans it and turns
+        it in to a list of words
+        :param x: a document (review) as a string
+        '''
+
         return [word for word in gensim.utils.simple_preprocess(x,deacc = True)
                 if word not in self.stopwords]
 
     def createGrams(self, ls):
         """
-        This function expects a list (or series) of lists of words each being a list representation of a document.
-        It returns a list of bigrams and a list of Trigrams relevant to the list given.
+        This method expects a list (or series) of lists of words each being a
+        list representation of a document. It returns a list of bigrams and
+        a list of Trigrams relevant to the list given.
+        :param ls: a list (or series) of a list of words
         """
         
-        # Create bigrams
+        # Create bigrams (i.e. train the bigrams)
         bigrams = gensim.models.Phrases(ls, min_count=3, threshold=50)
         bigrams_Phrases= gensim.models.phrases.Phraser(bigrams)
 
-        # Create trigrams
+        # Create trigrams (i.e. train the trigrams)
         trigrams = gensim.models.Phrases(bigrams_Phrases[list(ls)], min_count=3, threshold=50) 
         trigram_Phrases = gensim.models.phrases.Phraser(trigrams)
-        
+
+        # Return each document's list representation while considering n-grams
         return [bigrams_Phrases[i] for i in list(ls)],[trigram_Phrases[i] for i in list(ls)]
 
     def cleanAndCreateGrams(self, ls):
+        '''
+        This method takes a list (or series) of list representations of documents and cleans each
+        one while finding n-grams (bigrams and trigrams)
+        :param ls: a list (or series) of a list of words
+        '''
+        
         return(self.createGrams(ls.apply(lambda x: self.cleanDocument(x)))[0])
 
     def prepdf(self):
+        '''
+        This method prepares the review dataframe attached to this object by cleaning
+        each review and transforming it into list representation
+        '''
+        
         self.df['prepped'] = self.cleanAndCreateGrams(self.df[self.review_column])
 
     def ldaModel(self, x = None):
+        '''
+        This method runs the LDA model on the column containing the reviews in list
+        representation. If the reviews column has not already been prepared, this
+        method will prepare it. Optionally, the user can feed in an already prepped
+        column to run LDA on.
+        :param x: a list of lists of words. Each list is expected to have been prepped
+        by removing stopwords and finding n-grams
 
+        :returns: a tuple of the best lda model and the visualisation
+        '''
+
+        # if x hasn't been provided, use the prepped column of the dataframe attached to this object
         if x is None:
-            x = self.df['prepped']
+
+            # if this dataframe has not been prepared, prepare it
+            if 'prepped' in self.df.columns:
+                x = self.df['prepped']
+            else:
+                self.prepdf()
 
         # Create Dictionary
         self.id2word = gensim.corpora.Dictionary(x)
 
-        # Create Corpus
-        texts = x
-
         # Term Document Frequency
-        self.corpus = [self.id2word.doc2bow(text) for text in texts]
+        self.corpus = [self.id2word.doc2bow(text) for text in x]
 
+        # These are to store the performance and the best model
         max_coherence_score = 0
         best_n_topics = -1
         best_model = None
+
+        # Loop through each topic number and check if it has improved the performance
         for i in range(2,6): 
             # Build LDA model
             lda_model = gensim.models.ldamodel.LdaModel(corpus=self.corpus,
@@ -76,16 +136,19 @@ class TopicModeling:
                                                        passes=10,
                                                        alpha='auto',
                                                        per_word_topics=True)
-            # Compute Coherence Score
+            
+            # Calculate Coherence Score
             coherence_model_lda = gensim.models.CoherenceModel(model=lda_model,
                     texts=x, dictionary=self.id2word, coherence='c_v')
             coherence_lda = coherence_model_lda.get_coherence()
 
+            # If this has the best coherence score so far, save it
             if max_coherence_score < coherence_lda:
                 max_coherence_score = coherence_lda
                 best_n_topics = i
                 best_model = lda_model
 
+            # Print progress
             print('\n The Coherence Score with {} topics is {}'.format(i,coherence_lda))
 
         # Visualize the topics
