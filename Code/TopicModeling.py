@@ -158,15 +158,27 @@ class TopicModeling:
         return best_model, vis
 
     def ldaFromReviews(self):
+        '''
+        A method to run the LDA model on the reviews dataframe. If the dataframe
+        has been prepared for the LDA already, the model is directly run. Otherwise
+        the dataframe is prepared first. The resulting model and visualisation is
+        attached to this object.
+        '''
 
         # If the dataframe hasn't yet been prepped, prep it
         if 'prepped' not in self.df.columns:
             self.prepdf()
-            
+
+        # Save the model and the visualisation to this object    
         self.ldamodel,self.ldavis = self.ldaModel()
 
-    def generate_wordcloud_from_freq(self): # optionally add: stopwords=STOPWORDS and change the arg below
-        """A function to create a wordcloud according to the text frequencies as well as the text itself"""
+    def generate_wordcloud_from_freq(self): 
+        """
+        A method to create a wordcloud according to the text frequencies
+        attached to this object. Takes into account the stopwords variable
+        of this object.
+        """
+        
         wordcloud = WordCloud(background_color = 'white',
                               relative_scaling = 1.0,
                               stopwords = self.stopwords
@@ -175,25 +187,36 @@ class TopicModeling:
         return wordcloud
 
     def generate_wordcloud(self):
+        '''
+        This method gets the frequency dictionary from the corpus that
+        has already been formed and creates a wordcloud. The corpus is
+        an id-frequency list for each document. The resulting frequency
+        dictionary is an id-frequency list for the entire corpus.
+        '''
 
         # If there isn't a corpus, run lda
         if self.corpus is None:
             self.ldaFromReviews()
-        
-        self.freq_dict = []
-        [self.freq_dict.extend(i) for i in self.corpus[:]]
 
-        
+        # Get a frequncy list or tuples for each document in the corpus
+        self.freq_list = []
+        [self.freq_list.extend(i) for i in self.corpus[:]]
+
+        # Now create a single dictionary with id-frequency key value pairs for all docs
         self.frequency_dict = dict()
-        for i,j in self.freq_dict:
+        for i,j in self.freq_list:
             key = self.id2word[i]
             if key in self.frequency_dict:
                 self.frequency_dict[key] += j
             else:
                 self.frequency_dict[key] = j
-                
+
+        # Save wordcloud to the object        
         self.wordCloud = self.generate_wordcloud_from_freq()
 
     def showWordCloud(self):
+        '''
+        A method to display the wordcloud
+        '''
         return self.wordCloud.to_image()
     
